@@ -14,12 +14,12 @@ columns = ['frame.len', 'frame.time_relative', 'tcp.seq', 'tcp.ack', 'tcp.window
            'tcp.analysis.ack_rtt', 'tcp.analysis.initial_rtt', 'ip.src_192.168.0.26', 
            'ip.src_34.245.116.120', 'ip.dst_192.168.0.26', 'ip.dst_34.245.116.120']
 
-
-LOSS_THRESHOLD = 10  # warning limit
-packet_loss_count = 0
+# Initialize counters
+lost_packet_count = 0
+last_warning_lost_packet_count = 0
 
 def handle_packet(packet_info):
-    global packet_loss_count
+    global lost_packet_count, last_warning_lost_packet_count
     try:
         # Fill in missing columns
         df_packet = pd.DataFrame([packet_info], columns=columns).fillna(0)
@@ -28,20 +28,22 @@ def handle_packet(packet_info):
         y_pred = xgb_model.predict(X_packet)
 
         if y_pred[0] == 1:
-            packet_loss_count += 1
-            print("Lost packet estimated. Packet loss count updated.")
+            lost_packet_count += 1
+            print("Lost packet estimated.")
             
-            if packet_loss_count > LOSS_THRESHOLD:
-                print("Warning: High packet loss detected! Check your network.")
-                packet_loss_count = 0  # Reset count after warning
-                
+            # warning limit
+            if lost_packet_count // 10 > last_warning_lost_packet_count:
+                last_warning_lost_packet_count = lost_packet_count // 10
+                print(f"Warning: {lost_packet_count} lost packets processed. High packet loss detected. Network check suggested!")
+        
         else:
-            print("No packet loss detected.")
+            print("No need to retransmit.")
 
     except Exception as e:
         print(f"Error occurred while processing the package: {e}")
 
 def read_tshark_output(file_path):
+    # A loop that reads the file from beginning to end and constantly checks for new packages
     last_position = 0
     while True:
         try:
@@ -63,10 +65,10 @@ def read_tshark_output(file_path):
                                 'tcp.ack': int(packet_data[6].strip('"')) if packet_data[6] else 0,
                                 'tcp.window_size': int(packet_data[7].strip('"')) if packet_data[7] else 0,
                                 'tcp.analysis.retransmission': int(packet_data[8].strip('"')) if packet_data[8] else 0,
-                                'tcp.analysis.out_of_order': int(packet_data[9].strip('"')) if packet_data[9] else 0,
-                                'tcp.analysis.duplicate_ack': int(packet_data[10].strip('"')) if packet_data[10] else 0,
-                                'tcp.analysis.ack_rtt': float(packet_data[11].strip('"')) if packet_data[11] else 0.0,
-                                'tcp.analysis.initial_rtt': float(packet_data[12].strip('"')) if packet_data[12] else 0.0,
+                                'tcp.analysis.out_of_order': int(packet_data[10].strip('"')) if packet_data[10] else 0,
+                                'tcp.analysis.duplicate_ack': int(packet_data[11].strip('"')) if packet_data[11] else 0,
+                                'tcp.analysis.ack_rtt': float(packet_data[12].strip('"')) if packet_data[12] else 0.0,
+                                'tcp.analysis.initial_rtt': float(packet_data[13].strip('"')) if packet_data[13] else 0.0,
                                 'ip.src_192.168.0.26': 1 if packet_data[1].strip('"') == '192.168.0.26' else 0,
                                 'ip.src_34.245.116.120': 1 if packet_data[1].strip('"') == '34.245.116.120' else 0,
                                 'ip.dst_192.168.0.26': 1 if packet_data[2].strip('"') == '192.168.0.26' else 0,
