@@ -14,34 +14,37 @@ columns = ['frame.len', 'frame.time_relative', 'tcp.seq', 'tcp.ack', 'tcp.window
            'tcp.analysis.ack_rtt', 'tcp.analysis.initial_rtt', 'ip.src_192.168.0.26', 
            'ip.src_34.245.116.120', 'ip.dst_192.168.0.26', 'ip.dst_34.245.116.120']
 
-
-LOSS_THRESHOLD = 10  # warning limit
-packet_loss_count = 0
-
 def handle_packet(packet_info):
-    global packet_loss_count
     try:
         # Fill in missing columns
         df_packet = pd.DataFrame([packet_info], columns=columns).fillna(0)
-        
         X_packet = df_packet[columns]  # select all required columns
         y_pred = xgb_model.predict(X_packet)
 
         if y_pred[0] == 1:
-            packet_loss_count += 1
-            print("Lost packet estimated. Packet loss count updated.")
-            
-            if packet_loss_count > LOSS_THRESHOLD:
-                print("Warning: High packet loss detected! Check your network.")
-                packet_loss_count = 0  # Reset count after warning
-                
+            print("Lost packet estimated. Run iperf3.")
+            retransmit_packet()
         else:
-            print("No packet loss detected.")
+            print("No need run iperf3")
 
     except Exception as e:
         print(f"Error occurred while processing the package: {e}")
 
+def retransmit_packet():
+    """Performs data retransmission using iperf3"""
+    server_ip = '34.245.116.120'  # Iperf3 server IP address
+    duration = 1  # Traffic generation time (seconds)
+    
+    try:
+        # Run iperf3 
+        command = ['iperf3', '-c', server_ip, '-t', str(duration)]
+        subprocess.run(command, check=True)
+        print("Process completed.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during run iperf3: {e}")
+
 def read_tshark_output(file_path):
+    # A loop that reads the file from beginning to end and constantly checks for new packages
     last_position = 0
     while True:
         try:
