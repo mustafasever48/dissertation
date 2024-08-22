@@ -1,6 +1,5 @@
 import pandas as pd
 import joblib
-import subprocess
 import time
 
 # Load the XGBoost model you trained and saved
@@ -14,12 +13,11 @@ columns = ['frame.len', 'frame.time_relative', 'tcp.seq', 'tcp.ack', 'tcp.window
            'tcp.analysis.ack_rtt', 'tcp.analysis.initial_rtt', 'ip.src_192.168.0.26', 
            'ip.src_34.245.116.120', 'ip.dst_192.168.0.26', 'ip.dst_34.245.116.120']
 
-# Initialize counters
-lost_packet_count = 0
-last_warning_lost_packet_count = 0
+# Counter for lost packets
+lost_packet_counter = 0
 
 def handle_packet(packet_info):
-    global lost_packet_count, last_warning_lost_packet_count
+    global lost_packet_counter
     try:
         # Fill in missing columns
         df_packet = pd.DataFrame([packet_info], columns=columns).fillna(0)
@@ -28,14 +26,13 @@ def handle_packet(packet_info):
         y_pred = xgb_model.predict(X_packet)
 
         if y_pred[0] == 1:
-            lost_packet_count += 1
-            print("Lost packet estimated.")
+            print("Lost packet estimated. Retransmission is necessary.")
+            lost_packet_counter += 1
+
+            # Check if the counter has reached 10
+            if lost_packet_counter % 10 == 0:
+                print("Warning: 10 lost packets detected.")
             
-            # warning limit
-            if lost_packet_count // 10 > last_warning_lost_packet_count:
-                last_warning_lost_packet_count = lost_packet_count // 10
-                print(f"Warning: {lost_packet_count} lost packets processed. High packet loss detected. Network check suggested!")
-        
         else:
             print("No need to retransmit.")
 
@@ -43,7 +40,7 @@ def handle_packet(packet_info):
         print(f"Error occurred while processing the package: {e}")
 
 def read_tshark_output(file_path):
-    # A loop that reads the file from beginning to end and constantly checks for new packages
+    global lost_packet_counter
     last_position = 0
     while True:
         try:
